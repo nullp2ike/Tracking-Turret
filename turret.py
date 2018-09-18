@@ -14,7 +14,7 @@ import contextlib
 import imutils
 import RPi.GPIO as GPIO
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor, Adafruit_StepperMotor
-
+import Adafruit_PCA9685
 
 ### User Parameters ###
 
@@ -174,96 +174,45 @@ class Turret(object):
         self.friendly_mode = friendly_mode
 
         # create a default object, no changes to I2C address or frequency
-        self.mh = Adafruit_MotorHAT()
+        #self.mh = Adafruit_MotorHAT()
+        self.pwm = Adafruit_PCA9685.PCA9685()
         atexit.register(self.__turn_off_motors)
 
-        # Stepper motor 1
-        self.sm_x = self.mh.getStepper(200, 1)      # 200 steps/rev, motor port #1
-        self.sm_x.setSpeed(5)                       # 5 RPM
-        self.current_x_steps = 0
-
-        # Stepper motor 2
-        self.sm_y = self.mh.getStepper(200, 2)      # 200 steps/rev, motor port #2
-        self.sm_y.setSpeed(5)                       # 5 RPM
-        self.current_y_steps = 0
+        #Init servos
+        self.servo_min = 1000  # Min pulse length out of 4096
+        self.servo_max = 2000  # Max pulse length out of 4096
+        self.pwm.set_pwm_freq(60)
 
         # Relay
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(RELAY_PIN, GPIO.OUT)
-        GPIO.output(RELAY_PIN, GPIO.LOW)
+        GPIO.output(RELAY_PIN, GPIO.HIGH)
 
-    def calibrate(self):
-        """
-        Waits for input to calibrate the turret's axis
-        :return:
-        """
-        print "Please calibrate the tilt of the gun so that it is level. Commands: (w) moves up, " \
-              "(s) moves down. Press (enter) to finish.\n"
-        self.__calibrate_y_axis()
+        #Servo positions
+        self.current_x_steps = 0
+        self.current_y_steps = 0
+        self.pos = [1500, 1500, 1150]
 
-        print "Please calibrate the yaw of the gun so that it aligns with the camera. Commands: (a) moves left, " \
-              "(d) moves right. Press (enter) to finish.\n"
-        self.__calibrate_x_axis()
+        self.sm_x = 0
+        self.sm_y = 1
+        self.sm_fire = 2
+        
+        self.set_servo_pulse(self.sm_x, self.pos[self.sm_x])
+        self.set_servo_pulse(self.sm_y, self.pos[self.sm_y])
+        self.set_servo_pulse(self.sm_fire, self.pos[self.sm_fire])
 
-        print "Calibration finished."
-
-    def __calibrate_x_axis(self):
-        """
-        Waits for input to calibrate the x axis
-        :return:
-        """
-        with raw_mode(sys.stdin):
-            try:
-                while True:
-                    ch = sys.stdin.read(1)
-                    if not ch:
-                        break
-
-                    elif ch == "a":
-                        if MOTOR_X_REVERSED:
-                            Turret.move_backward(self.sm_x, 5)
-                        else:
-                            Turret.move_forward(self.sm_x, 5)
-                    elif ch == "d":
-                        if MOTOR_X_REVERSED:
-                            Turret.move_forward(self.sm_x, 5)
-                        else:
-                            Turret.move_backward(self.sm_x, 5)
-                    elif ch == "\n":
-                        break
-
-            except (KeyboardInterrupt, EOFError):
-                print "Error: Unable to calibrate turret. Exiting..."
-                sys.exit(1)
-
-    def __calibrate_y_axis(self):
-        """
-        Waits for input to calibrate the y axis.
-        :return:
-        """
-        with raw_mode(sys.stdin):
-            try:
-                while True:
-                    ch = sys.stdin.read(1)
-                    if not ch:
-                        break
-
-                    if ch == "w":
-                        if MOTOR_Y_REVERSED:
-                            Turret.move_forward(self.sm_y, 5)
-                        else:
-                            Turret.move_backward(self.sm_y, 5)
-                    elif ch == "s":
-                        if MOTOR_Y_REVERSED:
-                            Turret.move_backward(self.sm_y, 5)
-                        else:
-                            Turret.move_forward(self.sm_y, 5)
-                    elif ch == "\n":
-                        break
-
-            except (KeyboardInterrupt, EOFError):
-                print "Error: Unable to calibrate turret. Exiting..."
-                sys.exit(1)
+    # Helper function to make setting a servo pulse width simpler.
+    def set_servo_pulse(self, channel, pulse):
+        print('channel: {0}, pulse: {1}'.format(channel, pulse))
+        pulse_length = 1000000    # 1,000,000 us per second
+        pulse_length //= 60       # 60 Hz
+        print('{0}us per period'.format(pulse_length))
+        pulse_length //= 4096     # 12 bits of resolution
+        print('{0}us per bit'.format(pulse_length))
+        #pulse *= 1000
+        pulse //= pulse_length
+        print('channel: {0}, pulse final: {1}'.format(channel, pulse))
+        self.pwm.set_pwm(channel, 0, pulse)
 
     def motion_detection(self, show_video=False):
         """
@@ -291,29 +240,29 @@ class Turret(object):
         if (target_steps_x - self.current_x_steps) > 0:
             self.current_x_steps += 1
             if MOTOR_X_REVERSED:
-                t_x = threading.Thread(target=Turret.move_forward, args=(self.sm_x, 2,))
+                t_x = threading.Thread(target=self.move_forward, args=(self.sm_x, 2,))
             else:
-                t_x = threading.Thread(target=Turret.move_backward, args=(self.sm_x, 2,))
+                t_x = threading.Thread(target=self.move_backward, args=(self.sm_x, 2,))
         elif (target_steps_x - self.current_x_steps) < 0:
             self.current_x_steps -= 1
             if MOTOR_X_REVERSED:
-                t_x = threading.Thread(target=Turret.move_backward, args=(self.sm_x, 2,))
+                t_x = threading.Thread(target=self.move_backward, args=(self.sm_x, 2,))
             else:
-                t_x = threading.Thread(target=Turret.move_forward, args=(self.sm_x, 2,))
+                t_x = threading.Thread(target=self.move_forward, args=(self.sm_x, 2,))
 
         # move y
         if (target_steps_y - self.current_y_steps) > 0:
             self.current_y_steps += 1
             if MOTOR_Y_REVERSED:
-                t_y = threading.Thread(target=Turret.move_backward, args=(self.sm_y, 2,))
+                t_y = threading.Thread(target=self.move_backward, args=(self.sm_y, 2,))
             else:
-                t_y = threading.Thread(target=Turret.move_forward, args=(self.sm_y, 2,))
+                t_y = threading.Thread(target=self.move_forward, args=(self.sm_y, 2,))
         elif (target_steps_y - self.current_y_steps) < 0:
             self.current_y_steps -= 1
             if MOTOR_Y_REVERSED:
-                t_y = threading.Thread(target=Turret.move_forward, args=(self.sm_y, 2,))
+                t_y = threading.Thread(target=self.move_forward, args=(self.sm_y, 2,))
             else:
-                t_y = threading.Thread(target=Turret.move_backward, args=(self.sm_y, 2,))
+                t_y = threading.Thread(target=self.move_backward, args=(self.sm_y, 2,))
 
         # fire if necessary
         if not self.friendly_mode:
@@ -333,9 +282,9 @@ class Turret(object):
         Starts an interactive session. Key presses determine movement.
         :return:
         """
-
-        Turret.move_forward(self.sm_x, 1)
-        Turret.move_forward(self.sm_y, 1)
+        
+        self.move_forward(self.sm_x, 1)
+        self.move_forward(self.sm_y, 1)
 
         print 'Commands: Pivot with (a) and (d). Tilt with (w) and (s). Exit with (q)\n'
         with raw_mode(sys.stdin):
@@ -347,73 +296,84 @@ class Turret(object):
 
                     if ch == "w":
                         if MOTOR_Y_REVERSED:
-                            Turret.move_forward(self.sm_y, 5)
+                            self.move_forward(self.sm_y, 5)
                         else:
-                            Turret.move_backward(self.sm_y, 5)
+                            self.move_backward(self.sm_y, 5)
                     elif ch == "s":
                         if MOTOR_Y_REVERSED:
-                            Turret.move_backward(self.sm_y, 5)
+                            self.move_backward(self.sm_y, 5)
                         else:
-                            Turret.move_forward(self.sm_y, 5)
+                            self.move_forward(self.sm_y, 5)
                     elif ch == "a":
                         if MOTOR_X_REVERSED:
-                            Turret.move_backward(self.sm_x, 5)
+                            self.move_backward(self.sm_x, 5)
                         else:
-                            Turret.move_forward(self.sm_x, 5)
+                            self.move_forward(self.sm_x, 5)
                     elif ch == "d":
                         if MOTOR_X_REVERSED:
-                            Turret.move_forward(self.sm_x, 5)
+                            self.move_forward(self.sm_x, 5)
                         else:
-                            Turret.move_backward(self.sm_x, 5)
+                            self.move_backward(self.sm_x, 5)
                     elif ch == "\n":
-                        Turret.fire()
+                        self.fire()
 
             except (KeyboardInterrupt, EOFError):
                 pass
 
-    @staticmethod
-    def fire():
-        GPIO.output(RELAY_PIN, GPIO.HIGH)
-        time.sleep(1)
+    def fire(self):
+        print("Reloading")
         GPIO.output(RELAY_PIN, GPIO.LOW)
+        time.sleep(2)
+        self.set_servo_pulse(self.sm_fire, 1850)
+        time.sleep(1)
+        self.set_servo_pulse(self.sm_fire, 1150)
+        GPIO.output(RELAY_PIN, GPIO.HIGH)
 
-    @staticmethod
-    def move_forward(motor, steps):
+
+    def move_forward(self, motor, steps):
         """
         Moves the stepper motor forward the specified number of steps.
         :param motor:
         :param steps:
         :return:
         """
-        motor.step(steps, Adafruit_MotorHAT.FORWARD,  Adafruit_MotorHAT.INTERLEAVE)
-
-    @staticmethod
-    def move_backward(motor, steps):
+        pos = self.pos[motor] + (steps * 10)
+        if(pos <= self.servo_max):
+            self.pos[motor] = pos
+            self.set_servo_pulse(motor, pos)
+        
+    def move_backward(self, motor, steps):
         """
         Moves the stepper motor backward the specified number of steps
         :param motor:
         :param steps:
         :return:
         """
-        motor.step(steps, Adafruit_MotorHAT.BACKWARD, Adafruit_MotorHAT.INTERLEAVE)
+        pos = self.pos[motor] - (steps * 10)
+        if(pos >= self.servo_min):
+            self.pos[motor] = pos
+            self.set_servo_pulse(motor, pos)
 
     def __turn_off_motors(self):
         """
         Recommended for auto-disabling motors on shutdown!
         :return:
         """
-        self.mh.getMotor(1).run(Adafruit_MotorHAT.RELEASE)
-        self.mh.getMotor(2).run(Adafruit_MotorHAT.RELEASE)
-        self.mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
-        self.mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
 
 if __name__ == "__main__":
     t = Turret(friendly_mode=False)
-
+    
+    print('Moving servo on channel 0, press Ctrl-C to quit...')
+    while False:
+        # Move servo on channel O between extremes.
+        t.pwm.set_pwm(0, 0, t.servo_min)
+        time.sleep(1)
+        t.pwm.set_pwm(0, 0, t.servo_max)
+        time.sleep(1)
+        
     user_input = raw_input("Choose an input mode: (1) Motion Detection, (2) Interactive\n")
 
     if user_input == "1":
-        t.calibrate()
         if raw_input("Live video? (y, n)\n").lower() == "y":
             t.motion_detection(show_video=True)
         else:
