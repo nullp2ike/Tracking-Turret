@@ -10,6 +10,7 @@ import atexit
 import sys
 import termios
 import contextlib
+import argparse
 
 import imutils
 import RPi.GPIO as GPIO
@@ -21,10 +22,20 @@ import Adafruit_PCA9685
 MOTOR_X_REVERSED = False
 MOTOR_Y_REVERSED = False
 
+MOTOR_X_STARTPOS = 1500
+MOTOR_Y_STARTPOS = 1050
+MOTOR_FIRE_STARTPOS = 1150
+MOTOR_FIRE_ENDPOS = 1850
+
+TURRET_SETUP_TIME = 5
+MAX_NR_OF_ROUNDS = 5
+
 MAX_STEPS_X = 30
 MAX_STEPS_Y = 15
 
 RELAY_PIN = 22
+
+LOG_MOVEMENT = False
 
 #######################
 
@@ -184,34 +195,30 @@ class Turret(object):
         self.pwm.set_pwm_freq(60)
 
         # Relay
+        GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(RELAY_PIN, GPIO.OUT)
         GPIO.output(RELAY_PIN, GPIO.HIGH)
 
-        #Servo positions
-        self.current_x_steps = 0
-        self.current_y_steps = 0
-        self.pos = [1500, 1500, 1150]
-
+        #Servo channels
         self.sm_x = 0
         self.sm_y = 1
         self.sm_fire = 2
-        
-        self.set_servo_pulse(self.sm_x, self.pos[self.sm_x])
-        self.set_servo_pulse(self.sm_y, self.pos[self.sm_y])
-        self.set_servo_pulse(self.sm_fire, self.pos[self.sm_fire])
+
+        self.__init_motor_positions()
 
     # Helper function to make setting a servo pulse width simpler.
-    def set_servo_pulse(self, channel, pulse):
-        print('channel: {0}, pulse: {1}'.format(channel, pulse))
+    def set_servo_pulse(self, channel, pulse, log=LOG_MOVEMENT):
+        #print('channel: {0}, pulse: {1}'.format(channel, pulse))
         pulse_length = 1000000    # 1,000,000 us per second
         pulse_length //= 60       # 60 Hz
-        print('{0}us per period'.format(pulse_length))
+        #print('{0}us per period'.format(pulse_length))
         pulse_length //= 4096     # 12 bits of resolution
-        print('{0}us per bit'.format(pulse_length))
+        #print('{0}us per bit'.format(pulse_length))
         #pulse *= 1000
         pulse //= pulse_length
-        print('channel: {0}, pulse final: {1}'.format(channel, pulse))
+        if log:
+            print('channel: {0}, pulse final: {1}\n'.format(channel, pulse))
         self.pwm.set_pwm(channel, 0, pulse)
 
     def motion_detection(self, show_video=False):
@@ -282,11 +289,13 @@ class Turret(object):
         Starts an interactive session. Key presses determine movement.
         :return:
         """
-        
-        self.move_forward(self.sm_x, 1)
-        self.move_forward(self.sm_y, 1)
 
-        print 'Commands: Pivot with (a) and (d). Tilt with (w) and (s). Exit with (q)\n'
+        print 'Commands:'
+        print '(WASD) to move'
+        print '(ENTER) to fire'
+        print '(c) for continuous fire'
+        print '(i) and (o) to manually turn on gun motor'
+        print 'Exit with (q)\n'
         with raw_mode(sys.stdin):
             try:
                 while True:
@@ -315,20 +324,45 @@ class Turret(object):
                         else:
                             self.move_backward(self.sm_x, 5)
                     elif ch == "\n":
+                        if self.MANUAL_TURRET_ON == False:
+                            self.turret_on()
+
                         self.fire()
+
+                        if self.MANUAL_TURRET_ON == False:
+                            self.turret_off()
+                    elif ch == "c":
+                        self.turret_on()
+                        fire_count = 0
+                        while fire_count < MAX_NR_OF_ROUNDS:
+                            self.fire()
+                            fire_count += 1
+                            time.sleep(1)
+                        self.turret_off()
+                    elif ch == "i":
+                        self.MANUAL_TURRET_ON = True
+                        self.turret_on(False)
+                    elif ch == "o":
+                        self.MANUAL_TURRET_ON = False
+                        self.turret_off()
 
             except (KeyboardInterrupt, EOFError):
                 pass
 
-    def fire(self):
-        print("Reloading")
+    def turret_on(self, sleep=True):
         GPIO.output(RELAY_PIN, GPIO.LOW)
-        time.sleep(2)
-        self.set_servo_pulse(self.sm_fire, 1850)
-        time.sleep(1)
-        self.set_servo_pulse(self.sm_fire, 1150)
+        if sleep:
+            time.sleep(TURRET_SETUP_TIME)
+
+    def turret_off(self):
         GPIO.output(RELAY_PIN, GPIO.HIGH)
 
+    def fire(self):
+        print("FIRE!")
+        self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
+        time.sleep(1)
+        self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_STARTPOS)
+        time.sleep(1)
 
     def move_forward(self, motor, steps):
         """
@@ -354,33 +388,77 @@ class Turret(object):
             self.pos[motor] = pos
             self.set_servo_pulse(motor, pos)
 
+    def __init_motor_positions(self):
+        self.pos = [MOTOR_X_STARTPOS, MOTOR_Y_STARTPOS, MOTOR_FIRE_STARTPOS]
+
+        self.set_servo_pulse(self.sm_x, self.pos[self.sm_x], False)
+        self.set_servo_pulse(self.sm_y, self.pos[self.sm_y], False)
+        self.set_servo_pulse(self.sm_fire, self.pos[self.sm_fire], False)
+        
+        self.current_x_steps = 0
+        self.current_y_steps = 0
+
+        self.MANUAL_TURRET_ON = False
+
     def __turn_off_motors(self):
         """
         Recommended for auto-disabling motors on shutdown!
         :return:
         """
+        GPIO.output(RELAY_PIN, GPIO.HIGH)
+        self.__init_motor_positions()
+
+def parseArguments():
+    # Create argument parser
+    parser = argparse.ArgumentParser()
+
+    # Positional mandatory arguments
+    parser.add_argument("-m", "--mode", help="Input mode. (1) Motion Detection, (2) Interactive", type=str, required=False, choices=["1", "2"])
+    parser.add_argument("-v", "--video", help="Live video (y, n)", type=str, required=False, choices=["y", "Y", "n"], default="n")
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    return args
 
 if __name__ == "__main__":
     t = Turret(friendly_mode=False)
-    
-    print('Moving servo on channel 0, press Ctrl-C to quit...')
-    while False:
-        # Move servo on channel O between extremes.
-        t.pwm.set_pwm(0, 0, t.servo_min)
-        time.sleep(1)
-        t.pwm.set_pwm(0, 0, t.servo_max)
-        time.sleep(1)
-        
-    user_input = raw_input("Choose an input mode: (1) Motion Detection, (2) Interactive\n")
 
-    if user_input == "1":
-        if raw_input("Live video? (y, n)\n").lower() == "y":
-            t.motion_detection(show_video=True)
+    args = parseArguments()
+
+    if args.mode:
+        # Allow video
+        show_video_enabled = False
+        if args.video == "y":
+            show_video_enabled = True
+            
+        if args.mode == "1":
+            if show_video_enabled:
+                print "\nInitializing Motion Detection mode with live video enabled.\n"
+                t.motion_detection(show_video=True)
+            else:
+                print "\nInitializing Motion Detection mode without live video.\n"
+                t.motion_detection()
+        elif args.mode == "2":
+            if show_video_enabled:
+                print "\nInitializing Interactive mode with live video enabled.\n"
+                thread.start_new_thread(VideoUtils.live_video, ())
+            else:
+                print "\nInitializing Interactive mode withoput live video.\n"
+            t.interactive()
         else:
-            t.motion_detection()
-    elif user_input == "2":
-        if raw_input("Live video? (y, n)\n").lower() == "y":
-            thread.start_new_thread(VideoUtils.live_video, ())
-        t.interactive()
-    else:
-        print "Unknown input mode. Please choose a number (1) or (2)"
+            print "Invalid mode argument. Available choices: (1) Motion Detection, (2) Interactive\n"
+    else: 
+        user_input = raw_input("Choose an input mode: (1) Motion Detection, (2) Interactive\n")
+
+        if user_input == "1":
+            if raw_input("Live video? (y, n)\n").lower() == "y":
+                t.motion_detection(show_video=True)
+            else:
+                t.motion_detection()
+        elif user_input == "2":
+            if raw_input("Live video? (y, n)\n").lower() == "y":
+                thread.start_new_thread(VideoUtils.live_video, ())
+            t.interactive()
+        else:
+            print "Unknown input mode. Please choose a number (1) or (2)"
