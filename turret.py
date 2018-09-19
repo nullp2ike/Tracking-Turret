@@ -36,6 +36,7 @@ MAX_STEPS_Y = 15
 RELAY_PIN = 22
 
 LOG_MOVEMENT = False
+FRIENDLY_MODE = True
 
 #######################
 
@@ -274,7 +275,7 @@ class Turret(object):
         # fire if necessary
         if not self.friendly_mode:
             if abs(target_steps_y - self.current_y_steps) <= 2 and abs(target_steps_x - self.current_x_steps) <= 2:
-                t_fire = threading.Thread(target=Turret.fire)
+                t_fire = threading.Thread(target=self.fire)
 
         t_x.start()
         t_y.start()
@@ -422,7 +423,7 @@ def parseArguments():
     return args
 
 if __name__ == "__main__":
-    t = Turret(friendly_mode=False)
+    t = Turret(friendly_mode=FRIENDLY_MODE)
 
     args = parseArguments()
 
