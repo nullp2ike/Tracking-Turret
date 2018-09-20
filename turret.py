@@ -19,24 +19,28 @@ import Adafruit_PCA9685
 
 ### User Parameters ###
 
-MOTOR_X_REVERSED = False
-MOTOR_Y_REVERSED = False
+SERVO_MIN = 1000            # Servo min pulse
+SERVO_MAX = 2000            # Servo max pulse
 
-MOTOR_X_STARTPOS = 1500
-MOTOR_Y_STARTPOS = 1050
-MOTOR_FIRE_STARTPOS = 1150
-MOTOR_FIRE_ENDPOS = 1850
+MOTOR_X_STARTPOS = 1500     # X-axis (base) servo start position
+MOTOR_Y_STARTPOS = 1050     # Y-axis (gun) servo start position
+MOTOR_FIRE_STARTPOS = 1150  # Start position of the bullet pushing motor
+MOTOR_FIRE_ENDPOS = 1850    # End position of the bullet pushing motor
 
-TURRET_SETUP_TIME = 5
-MAX_NR_OF_ROUNDS = 5
+TURRET_SETUP_TIME = 3       # Load time in seconds
+MAX_NR_OF_ROUNDS = 6        # Ammo storage capacity
 
-MAX_STEPS_X = 30
-MAX_STEPS_Y = 15
+MANUAL_MOVE_STEP = 5        # Movement modifier for Interactive mode
+VIDEO_MOVE_STEP = 2         # Movement modifier for Motion Detection mode
+MOVEMENT_MODIFIER = 10      # Multiply movement step by this modifier
 
-RELAY_PIN = 22
+RELAY_PIN = 22              # Relay PIN number on the board
 
-LOG_MOVEMENT = False
-FRIENDLY_MODE = True
+LOG_MOVEMENT = False        # Log movement
+FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
+
+MAX_STEPS_X = (SERVO_MAX - SERVO_MIN) / (VIDEO_MOVE_STEP * MOVEMENT_MODIFIER)
+MAX_STEPS_Y = (SERVO_MAX - SERVO_MIN) / (VIDEO_MOVE_STEP * MOVEMENT_MODIFIER)
 
 #######################
 
@@ -190,9 +194,7 @@ class Turret(object):
         self.pwm = Adafruit_PCA9685.PCA9685()
         atexit.register(self.__turn_off_motors)
 
-        #Init servos
-        self.servo_min = 1000  # Min pulse length out of 4096
-        self.servo_max = 2000  # Max pulse length out of 4096
+        # Init servos
         self.pwm.set_pwm_freq(60)
 
         # Relay
@@ -201,10 +203,13 @@ class Turret(object):
         GPIO.setup(RELAY_PIN, GPIO.OUT)
         GPIO.output(RELAY_PIN, GPIO.HIGH)
 
-        #Servo channels
+        # Servo channels
         self.sm_x = 0
         self.sm_y = 1
         self.sm_fire = 2
+
+        # Ammo count
+        self.ammo_left = MAX_NR_OF_ROUNDS
 
         self.__init_motor_positions()
 
@@ -235,7 +240,7 @@ class Turret(object):
 
         # find height
         target_steps_x = (2*MAX_STEPS_X * (x + w / 2) / v_w) - MAX_STEPS_X
-        target_steps_y = (2*MAX_STEPS_Y*(y+h/2) / v_h) - MAX_STEPS_Y
+        target_steps_y = (2*MAX_STEPS_Y * (y + h / 2) / v_h) - MAX_STEPS_Y
 
         print "x: %s, y: %s" % (str(target_steps_x), str(target_steps_y))
         print "current x: %s, current y: %s" % (str(self.current_x_steps), str(self.current_y_steps))
@@ -247,34 +252,22 @@ class Turret(object):
         # move x
         if (target_steps_x - self.current_x_steps) > 0:
             self.current_x_steps += 1
-            if MOTOR_X_REVERSED:
-                t_x = threading.Thread(target=self.move_forward, args=(self.sm_x, 2,))
-            else:
-                t_x = threading.Thread(target=self.move_backward, args=(self.sm_x, 2,))
+            t_x = threading.Thread(target=self.move_backward, args=(self.sm_x, VIDEO_MOVE_STEP,))
         elif (target_steps_x - self.current_x_steps) < 0:
             self.current_x_steps -= 1
-            if MOTOR_X_REVERSED:
-                t_x = threading.Thread(target=self.move_backward, args=(self.sm_x, 2,))
-            else:
-                t_x = threading.Thread(target=self.move_forward, args=(self.sm_x, 2,))
+            t_x = threading.Thread(target=self.move_forward, args=(self.sm_x, VIDEO_MOVE_STEP,))
 
         # move y
         if (target_steps_y - self.current_y_steps) > 0:
             self.current_y_steps += 1
-            if MOTOR_Y_REVERSED:
-                t_y = threading.Thread(target=self.move_backward, args=(self.sm_y, 2,))
-            else:
-                t_y = threading.Thread(target=self.move_forward, args=(self.sm_y, 2,))
+            t_y = threading.Thread(target=self.move_forward, args=(self.sm_y, VIDEO_MOVE_STEP,))
         elif (target_steps_y - self.current_y_steps) < 0:
             self.current_y_steps -= 1
-            if MOTOR_Y_REVERSED:
-                t_y = threading.Thread(target=self.move_forward, args=(self.sm_y, 2,))
-            else:
-                t_y = threading.Thread(target=self.move_backward, args=(self.sm_y, 2,))
+            t_y = threading.Thread(target=self.move_backward, args=(self.sm_y, VIDEO_MOVE_STEP,))
 
         # fire if necessary
         if not self.friendly_mode:
-            if abs(target_steps_y - self.current_y_steps) <= 2 and abs(target_steps_x - self.current_x_steps) <= 2:
+            if abs(target_steps_y - self.current_y_steps) <= VIDEO_MOVE_STEP and abs(target_steps_x - self.current_x_steps) <= VIDEO_MOVE_STEP:
                 t_fire = threading.Thread(target=self.fire)
 
         t_x.start()
@@ -305,32 +298,20 @@ class Turret(object):
                         break
 
                     if ch == "w":
-                        if MOTOR_Y_REVERSED:
-                            self.move_forward(self.sm_y, 5)
-                        else:
-                            self.move_backward(self.sm_y, 5)
+                        self.move_backward(self.sm_y, MANUAL_MOVE_STEP)
                     elif ch == "s":
-                        if MOTOR_Y_REVERSED:
-                            self.move_backward(self.sm_y, 5)
-                        else:
-                            self.move_forward(self.sm_y, 5)
+                        self.move_forward(self.sm_y, MANUAL_MOVE_STEP)
                     elif ch == "a":
-                        if MOTOR_X_REVERSED:
-                            self.move_backward(self.sm_x, 5)
-                        else:
-                            self.move_forward(self.sm_x, 5)
+                        self.move_forward(self.sm_x, MANUAL_MOVE_STEP)
                     elif ch == "d":
-                        if MOTOR_X_REVERSED:
-                            self.move_forward(self.sm_x, 5)
-                        else:
-                            self.move_backward(self.sm_x, 5)
+                        self.move_backward(self.sm_x, MANUAL_MOVE_STEP)
                     elif ch == "\n":
-                        if self.MANUAL_TURRET_ON == False:
+                        if not self.MANUAL_TURRET_ON:
                             self.turret_on()
 
                         self.fire()
 
-                        if self.MANUAL_TURRET_ON == False:
+                        if not self.MANUAL_TURRET_ON:
                             self.turret_off()
                     elif ch == "c":
                         self.turret_on()
@@ -351,19 +332,29 @@ class Turret(object):
                 pass
 
     def turret_on(self, sleep=True):
-        GPIO.output(RELAY_PIN, GPIO.LOW)
-        if sleep:
-            time.sleep(TURRET_SETUP_TIME)
+        if self.ammo_left > 0:
+            GPIO.output(RELAY_PIN, GPIO.LOW)
+            if sleep:
+                time.sleep(TURRET_SETUP_TIME)
+        else:
+            sys.exit("OUT OF AMMO")
 
     def turret_off(self):
         GPIO.output(RELAY_PIN, GPIO.HIGH)
 
     def fire(self):
-        print("FIRE!")
-        self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
-        time.sleep(1)
-        self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_STARTPOS)
-        time.sleep(1)
+        if self.ammo_left > 0:
+            print("FIRE!")
+            self.ammo_left -= 1
+            self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
+            time.sleep(1)
+            self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_STARTPOS)
+            time.sleep(1)
+
+            if self.ammo_left == 0:
+                sys.exit("OUT OF AMMO")
+        else:
+            sys.exit("OUT OF AMMO")
 
     def move_forward(self, motor, steps):
         """
@@ -372,8 +363,8 @@ class Turret(object):
         :param steps:
         :return:
         """
-        pos = self.pos[motor] + (steps * 10)
-        if(pos <= self.servo_max):
+        pos = self.pos[motor] + (steps * MOVEMENT_MODIFIER)
+        if(pos <= SERVO_MAX):
             self.pos[motor] = pos
             self.set_servo_pulse(motor, pos)
         
@@ -384,8 +375,8 @@ class Turret(object):
         :param steps:
         :return:
         """
-        pos = self.pos[motor] - (steps * 10)
-        if(pos >= self.servo_min):
+        pos = self.pos[motor] - (steps * MOVEMENT_MODIFIER)
+        if(pos >= SERVO_MIN):
             self.pos[motor] = pos
             self.set_servo_pulse(motor, pos)
 
