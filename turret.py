@@ -165,6 +165,8 @@ class VideoUtils(object):
                 if key == ord("q"):
                     break
 
+            firstFrame = gray
+
         # cleanup the camera and close any open windows
         camera.release()
         cv2.destroyAllWindows()
