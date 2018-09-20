@@ -36,11 +36,11 @@ MOVEMENT_MODIFIER = 10      # Multiply movement step by this modifier
 
 RELAY_PIN = 22              # Relay PIN number on the board
 
-LOG_MOVEMENT = False        # Log movement
+LOG_MOVEMENT = True        # Log movement
 FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
 
-MAX_STEPS_X = (SERVO_MAX - SERVO_MIN) / (VIDEO_MOVE_STEP * MOVEMENT_MODIFIER)
-MAX_STEPS_Y = (SERVO_MAX - SERVO_MIN) / (VIDEO_MOVE_STEP * MOVEMENT_MODIFIER)
+MAX_STEPS_X = 50
+MAX_STEPS_Y = 14
 
 #######################
 
@@ -161,7 +161,7 @@ class VideoUtils(object):
                 cv2.imshow("Security Feed", frame)
                 key = cv2.waitKey(1) & 0xFF
 
-                # if the `q` key is pressed, break from the lop
+                # if the `q` key is pressed, break from the loop
                 if key == ord("q"):
                     break
 
@@ -215,6 +215,8 @@ class Turret(object):
 
     # Helper function to make setting a servo pulse width simpler.
     def set_servo_pulse(self, channel, pulse, log=LOG_MOVEMENT):
+        if log and channel == 0:
+            print('channel: {0}, pulse: {1}\n'.format(channel, pulse))
         #print('channel: {0}, pulse: {1}'.format(channel, pulse))
         pulse_length = 1000000    # 1,000,000 us per second
         pulse_length //= 60       # 60 Hz
@@ -223,8 +225,7 @@ class Turret(object):
         #print('{0}us per bit'.format(pulse_length))
         #pulse *= 1000
         pulse //= pulse_length
-        if log:
-            print('channel: {0}, pulse final: {1}\n'.format(channel, pulse))
+        
         self.pwm.set_pwm(channel, 0, pulse)
 
     def motion_detection(self, show_video=False):
@@ -239,11 +240,11 @@ class Turret(object):
         (x, y, w, h) = cv2.boundingRect(contour)
 
         # find height
-        target_steps_x = (2*MAX_STEPS_X * (x + w / 2) / v_w) - MAX_STEPS_X
-        target_steps_y = (2*MAX_STEPS_Y * (y + h / 2) / v_h) - MAX_STEPS_Y
+        target_steps_x = (2 * MAX_STEPS_X * (x + w / 2) / v_w) - MAX_STEPS_X
+        target_steps_y = (2 * MAX_STEPS_Y * (y + h / 2) / v_h) - MAX_STEPS_Y
 
-        print "x: %s, y: %s" % (str(target_steps_x), str(target_steps_y))
-        print "current x: %s, current y: %s" % (str(self.current_x_steps), str(self.current_y_steps))
+        print "target  x: %s, target  y: %s" % (str(target_steps_x), str(target_steps_y))
+        print "current x: %s, current y: %s\n" % (str(self.current_x_steps), str(self.current_y_steps))
 
         t_x = threading.Thread()
         t_y = threading.Thread()
@@ -316,7 +317,7 @@ class Turret(object):
                     elif ch == "c":
                         self.turret_on()
                         fire_count = 0
-                        while fire_count < MAX_NR_OF_ROUNDS:
+                        while fire_count < self.ammo_left:
                             self.fire()
                             fire_count += 1
                             time.sleep(1)
@@ -327,6 +328,9 @@ class Turret(object):
                     elif ch == "o":
                         self.MANUAL_TURRET_ON = False
                         self.turret_off()
+                    elif ch == "r":
+                        self.ammo_left = MAX_NR_OF_ROUNDS
+                        print("RELOADED")
 
             except (KeyboardInterrupt, EOFError):
                 pass
@@ -337,7 +341,7 @@ class Turret(object):
             if sleep:
                 time.sleep(TURRET_SETUP_TIME)
         else:
-            sys.exit("OUT OF AMMO")
+            print("OUT OF AMMO, RELOAD ME PLEASE")
 
     def turret_off(self):
         GPIO.output(RELAY_PIN, GPIO.HIGH)
@@ -352,9 +356,9 @@ class Turret(object):
             time.sleep(1)
 
             if self.ammo_left == 0:
-                sys.exit("OUT OF AMMO")
+                print("OUT OF AMMO, RELOAD ME PLEASE")
         else:
-            sys.exit("OUT OF AMMO")
+            print("OUT OF AMMO, RELOAD ME PLEASE")
 
     def move_forward(self, motor, steps):
         """
