@@ -41,8 +41,6 @@ FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
 MAX_STEPS_X = 20            # Max motion tracking X-axis movement
 MAX_STEPS_Y = 5            # Max motion tracking Y-axis movement
 
-UPDATE_FRAME = False
-
 #######################
 
 
@@ -167,8 +165,7 @@ class VideoUtils(object):
                     break
 
             #TODO: Figure out how to position the camera so that it moves together with the gun
-            #if UPDATE_FRAME:
-                #firstFrame = gray
+            #firstFrame = gray
 
         # cleanup the camera and close any open windows
         camera.release()
@@ -238,9 +235,6 @@ class Turret(object):
         pulse //= pulse_length
         
         self.pwm.set_pwm(channel, 0, pulse)
-
-        if self.run_mode == 1:
-            UPDATE_FRAME = True
 
     def motion_detection(self, show_video=False):
         """
