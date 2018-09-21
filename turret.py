@@ -14,7 +14,6 @@ import argparse
 
 import imutils
 import RPi.GPIO as GPIO
-from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor, Adafruit_StepperMotor
 import Adafruit_PCA9685
 
 ### User Parameters ###
@@ -36,11 +35,11 @@ MOVEMENT_MODIFIER = 10      # Multiply movement step by this modifier
 
 RELAY_PIN = 22              # Relay PIN number on the board
 
-LOG_MOVEMENT = True        # Log movement
+LOG_MOVEMENT = True         # Log movement
 FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
 
-MAX_STEPS_X = 50
-MAX_STEPS_Y = 14
+MAX_STEPS_X = 50            # Max motion tracking X-axis movement
+MAX_STEPS_Y = 14            # Max motion tracking Y-axis movement
 
 #######################
 
@@ -130,7 +129,7 @@ class VideoUtils(object):
                     tst = cv2.threshold(delta, 5, 255, cv2.THRESH_BINARY)[1]
                     tst = cv2.dilate(tst, None, iterations=2)
                     if count > 30:
-                        print "Done.\n Waiting for motion."
+                        print "Done.\n Waiting for motion.\n"
                         if not cv2.countNonZero(tst) > 0:
                             lastFrame = gray
                         else:
@@ -245,6 +244,7 @@ class Turret(object):
         target_steps_x = (2 * MAX_STEPS_X * (x + w / 2) / v_w) - MAX_STEPS_X
         target_steps_y = (2 * MAX_STEPS_Y * (y + h / 2) / v_h) - MAX_STEPS_Y
 
+        print "info:   x: %s, y: %s, w: %s, h: %s, v_h: %s, v_w: %s" % (str(x), str(y), str(w), str(h), str(v_h), str(v_w))
         print "target  x: %s, target  y: %s" % (str(target_steps_x), str(target_steps_y))
         print "current x: %s, current y: %s\n" % (str(self.current_x_steps), str(self.current_y_steps))
 
@@ -412,7 +412,7 @@ def parseArguments():
 
     # Positional mandatory arguments
     parser.add_argument("-m", "--mode", help="Input mode. (1) Motion Detection, (2) Interactive", type=str, required=False, choices=["1", "2"])
-    parser.add_argument("-v", "--video", help="Live video (y, n)", type=str, required=False, choices=["y", "Y", "n"], default="n")
+    parser.add_argument("-v", "--video", help="Live video (y, n)", type=str, required=False, choices=["y", "n"], default="n")
 
     # Parse arguments
     args = parser.parse_args()
