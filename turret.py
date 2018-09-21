@@ -246,7 +246,7 @@ class Turret(object):
 
         # find height
         target_steps_x = (2 * MAX_STEPS_X * (x + w / 2) / v_w) - MAX_STEPS_X
-        target_steps_y = (2 * MAX_STEPS_Y * (y + h / 2) / v_h) - MAX_STEPS_Y
+        target_steps_y = (2 * MAX_STEPS_Y * (y + h / 5) / v_h) - MAX_STEPS_Y
 
         print "info:   x: %s, y: %s, w: %s, h: %s, v_h: %s, v_w: %s" % (str(x), str(y), str(w), str(h), str(v_h), str(v_w))
         print "target  x: %s, target  y: %s" % (str(target_steps_x), str(target_steps_y))
