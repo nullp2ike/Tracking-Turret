@@ -38,8 +38,10 @@ RELAY_PIN = 22              # Relay PIN number on the board
 LOG_MOVEMENT = True         # Log movement
 FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
 
-MAX_STEPS_X = 30            # Max motion tracking X-axis movement
-MAX_STEPS_Y = 15            # Max motion tracking Y-axis movement
+MAX_STEPS_X = 20            # Max motion tracking X-axis movement
+MAX_STEPS_Y = 5            # Max motion tracking Y-axis movement
+
+UPDATE_FRAME = False
 
 #######################
 
@@ -165,8 +167,8 @@ class VideoUtils(object):
                     break
 
             #TODO: Figure out how to position the camera so that it moves together with the gun
-            #TODO: Rename firstFrame to lastFrame
-            #firstFrame = gray
+            #if UPDATE_FRAME:
+                #firstFrame = gray
 
         # cleanup the camera and close any open windows
         camera.release()
@@ -191,6 +193,7 @@ class Turret(object):
     """
     def __init__(self, friendly_mode=True):
         self.friendly_mode = friendly_mode
+        self.run_mode = 1
 
         # create a default object, no changes to I2C address or frequency
         self.pwm = Adafruit_PCA9685.PCA9685()
@@ -218,6 +221,9 @@ class Turret(object):
 
         self.__init_motor_positions()
 
+    def set_mode(self, run_mode=1):
+        self.run_mode = run_mode
+
     # Helper function to make setting a servo pulse width simpler.
     def set_servo_pulse(self, channel, pulse, log=LOG_MOVEMENT):
         if log and channel == 0:
@@ -232,6 +238,9 @@ class Turret(object):
         pulse //= pulse_length
         
         self.pwm.set_pwm(channel, 0, pulse)
+
+        if self.run_mode == 1:
+            UPDATE_FRAME = True
 
     def motion_detection(self, show_video=False):
         """
@@ -446,6 +455,7 @@ if __name__ == "__main__":
             show_video_enabled = True
             
         if args.mode == "1":
+            t.set_mode(1)
             if show_video_enabled:
                 print "\nInitializing Motion Detection mode with live video enabled.\n"
                 t.motion_detection(show_video=True)
@@ -453,6 +463,7 @@ if __name__ == "__main__":
                 print "\nInitializing Motion Detection mode without live video.\n"
                 t.motion_detection()
         elif args.mode == "2":
+            t.set_mode(2)
             if show_video_enabled:
                 print "\nInitializing Interactive mode with live video enabled.\n"
                 thread.start_new_thread(VideoUtils.live_video, ())
@@ -465,11 +476,13 @@ if __name__ == "__main__":
         user_input = raw_input("Choose an input mode: (1) Motion Detection, (2) Interactive\n")
 
         if user_input == "1":
+            t.set_mode(1)
             if raw_input("Live video? (y, n)\n").lower() == "y":
                 t.motion_detection(show_video=True)
             else:
                 t.motion_detection()
         elif user_input == "2":
+            t.set_mode(2)
             if raw_input("Live video? (y, n)\n").lower() == "y":
                 thread.start_new_thread(VideoUtils.live_video, ())
             t.interactive()
