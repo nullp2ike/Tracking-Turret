@@ -116,3 +116,14 @@ MAX_STEPS_Y = 14            # Max motion tracking Y-axis movement
 #######################
 ```
 
+## Running the turrent on startup
+
+Guide available at: https://www.pyimagesearch.com/2016/05/16/running-a-python-opencv-script-on-reboot/
+
+The on_reboot.sh script is included with this repository.
+To make it work, edit the crontab (`sudo crontab -e`) and add the line to the end:
+
+```
+@reboot /home/pi/Tracking-Turret/on_reboot.sh
+```
+
