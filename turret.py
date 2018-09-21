@@ -38,8 +38,8 @@ RELAY_PIN = 22              # Relay PIN number on the board
 LOG_MOVEMENT = True         # Log movement
 FRIENDLY_MODE = True        # Friendly mode (allow firing for Motion Detection)
 
-MAX_STEPS_X = 50            # Max motion tracking X-axis movement
-MAX_STEPS_Y = 14            # Max motion tracking Y-axis movement
+MAX_STEPS_X = 30            # Max motion tracking X-axis movement
+MAX_STEPS_Y = 15            # Max motion tracking Y-axis movement
 
 #######################
 
@@ -275,7 +275,7 @@ class Turret(object):
         # fire if necessary
         if not self.friendly_mode:
             if abs(target_steps_y - self.current_y_steps) <= VIDEO_MOVE_STEP and abs(target_steps_x - self.current_x_steps) <= VIDEO_MOVE_STEP:
-                t_fire = threading.Thread(target=self.fire, args=(True))
+                t_fire = threading.Thread(target=self.fire, args=(True,))
 
         t_x.start()
         t_y.start()
@@ -358,8 +358,10 @@ class Turret(object):
                 self.is_firing = True
                 
                 if require_turret_setup:
+                    print("FIRE WITH SETUP!")
                     self.turret_on()
-                print("FIRE!")
+                else:
+                    print("FIRE!")
                 self.ammo_left -= 1
                 self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
                 time.sleep(1)
