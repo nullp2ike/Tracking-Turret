@@ -96,8 +96,8 @@ class VideoUtils(object):
         camera = cv2.VideoCapture(camera_port)
         time.sleep(0.25)
 
-        # initialize the first frame in the video stream
-        firstFrame = None
+        # initialize the last frame in the video stream
+        lastFrame = None
         tempFrame = None
         count = 0
 
@@ -118,8 +118,8 @@ class VideoUtils(object):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
-            # if the first frame is None, initialize it
-            if firstFrame is None:
+            # if the last frame is None, initialize it
+            if lastFrame is None:
                 print "Waiting for video to adjust..."
                 if tempFrame is None:
                     tempFrame = gray
@@ -132,7 +132,7 @@ class VideoUtils(object):
                     if count > 30:
                         print "Done.\n Waiting for motion."
                         if not cv2.countNonZero(tst) > 0:
-                            firstFrame = gray
+                            lastFrame = gray
                         else:
                             continue
                     else:
@@ -140,8 +140,8 @@ class VideoUtils(object):
                         continue
 
             # compute the absolute difference between the current frame and
-            # first frame
-            frameDelta = cv2.absdiff(firstFrame, gray)
+            # last frame
+            frameDelta = cv2.absdiff(lastFrame, gray)
             thresh = cv2.threshold(frameDelta, 25, 255, cv2.THRESH_BINARY)[1]
 
             # dilate the thresholded image to fill in holes, then find contours
@@ -165,7 +165,7 @@ class VideoUtils(object):
                 if key == ord("q"):
                     break
 
-            firstFrame = gray
+            lastFrame = gray
 
         # cleanup the camera and close any open windows
         camera.release()
