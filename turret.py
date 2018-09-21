@@ -191,7 +191,6 @@ class Turret(object):
         self.friendly_mode = friendly_mode
 
         # create a default object, no changes to I2C address or frequency
-        #self.mh = Adafruit_MotorHAT()
         self.pwm = Adafruit_PCA9685.PCA9685()
         atexit.register(self.__turn_off_motors)
 
