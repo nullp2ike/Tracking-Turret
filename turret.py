@@ -95,8 +95,8 @@ class VideoUtils(object):
         camera = cv2.VideoCapture(camera_port)
         time.sleep(0.25)
 
-        # initialize the last frame in the video stream
-        lastFrame = None
+        # initialize the first frame in the video stream
+        firstFrame = None
         tempFrame = None
         count = 0
 
@@ -117,8 +117,8 @@ class VideoUtils(object):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray = cv2.GaussianBlur(gray, (21, 21), 0)
 
-            # if the last frame is None, initialize it
-            if lastFrame is None:
+            # if the first frame is None, initialize it
+            if firstFrame is None:
                 print "Waiting for video to adjust..."
                 if tempFrame is None:
                     tempFrame = gray
@@ -131,7 +131,7 @@ class VideoUtils(object):
                     if count > 30:
                         print "Done.\n Waiting for motion.\n"
                         if not cv2.countNonZero(tst) > 0:
-                            lastFrame = gray
+                            firstFrame = gray
                         else:
                             continue
                     else:
@@ -139,8 +139,8 @@ class VideoUtils(object):
                         continue
 
             # compute the absolute difference between the current frame and
-            # last frame
-            frameDelta = cv2.absdiff(lastFrame, gray)
+            # first frame
+            frameDelta = cv2.absdiff(firstFrame, gray)
             thresh = cv2.threshold(frameDelta, 25, 255, cv2.THRESH_BINARY)[1]
 
             # dilate the thresholded image to fill in holes, then find contours
@@ -164,7 +164,9 @@ class VideoUtils(object):
                 if key == ord("q"):
                     break
 
-            lastFrame = gray
+            #TODO: Figure out how to position the camera so that it moves together with the gun
+            #TODO: Rename firstFrame to lastFrame
+            #firstFrame = gray
 
         # cleanup the camera and close any open windows
         camera.release()
@@ -210,6 +212,9 @@ class Turret(object):
 
         # Ammo count
         self.ammo_left = MAX_NR_OF_ROUNDS
+
+        # Keep tracking of firing state (Motion Detection should trigger fire once per cycle)
+        self.is_firing = False
 
         self.__init_motor_positions()
 
@@ -270,7 +275,7 @@ class Turret(object):
         # fire if necessary
         if not self.friendly_mode:
             if abs(target_steps_y - self.current_y_steps) <= VIDEO_MOVE_STEP and abs(target_steps_x - self.current_x_steps) <= VIDEO_MOVE_STEP:
-                t_fire = threading.Thread(target=self.fire)
+                t_fire = threading.Thread(target=self.fire, args=(True))
 
         t_x.start()
         t_y.start()
@@ -347,17 +352,26 @@ class Turret(object):
     def turret_off(self):
         GPIO.output(RELAY_PIN, GPIO.HIGH)
 
-    def fire(self):
+    def fire(self, require_turret_setup=False):
         if self.ammo_left > 0:
-            print("FIRE!")
-            self.ammo_left -= 1
-            self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
-            time.sleep(1)
-            self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_STARTPOS)
-            time.sleep(1)
-
-            if self.ammo_left == 0:
-                print("OUT OF AMMO, RELOAD ME PLEASE")
+            if not self.is_firing:
+                self.is_firing = True
+                
+                if require_turret_setup:
+                    self.turret_on()
+                print("FIRE!")
+                self.ammo_left -= 1
+                self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_ENDPOS)
+                time.sleep(1)
+                self.set_servo_pulse(self.sm_fire, MOTOR_FIRE_STARTPOS)
+                time.sleep(1)
+                
+                if require_turret_setup:
+                    self.turret_off()
+                
+                self.is_firing = False
+                if self.ammo_left == 0:
+                    print("OUT OF AMMO, RELOAD ME PLEASE")
         else:
             print("OUT OF AMMO, RELOAD ME PLEASE")
 
