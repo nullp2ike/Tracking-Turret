@@ -26,6 +26,7 @@ sudo pip install adafruit-pca9685
 Install OpenCV 3. Follow all steps for python 2.7 instructions
 
 Raspbian Stretch: https://www.pyimagesearch.com/2017/09/04/raspbian-stretch-install-opencv-3-python-on-your-raspberry-pi/
+
 Raspbian Jessie: http://www.pyimagesearch.com/2016/04/18/install-guide-raspberry-pi-3-raspbian-jessie-opencv-3/
 
 Make sure to create your virtual environment with the extra flag.
